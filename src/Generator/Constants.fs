@@ -47,7 +47,7 @@ let additionalTypesToGenerate =
     |> Set.toArray
 
 let reservedKeywords =
-    [| "ref"; "object"; "string"; "event"; "params"; "base"; "in" |]
+    [| "ref"; "object"; "string"; "event"; "params"; "base"; "in"; "type" |]
 let graphicsNamespace = "OpenToolkit.Graphics"
 let dummyTypesFileName = "DummyTypes"
 let advancedDlSupport = "AdvancedDLSupport"

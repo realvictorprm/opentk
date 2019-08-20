@@ -55,10 +55,10 @@ let autoGenerateAdditionalOverloadForType (func: PrintReadyTypedFunctionDeclarat
                 match currParameter.typ.typ with
                 | Pointer(GLchar) ->
                     { currParameter with
-                        PrintReadyTypedParameterInfo.typ = GLString |> PrintReady.formatTypeInfo }
+                        PrintReadyTypedParameterInfo.typ = GLString |> FSharp.PrintReady.formatTypeInfo }
                 | Pointer(Pointer(GLchar)) ->
                     { currParameter with
-                        PrintReadyTypedParameterInfo.typ = GLString |> ArrayType |> PrintReady.formatTypeInfo }
+                        PrintReadyTypedParameterInfo.typ = GLString |> ArrayType |> FSharp.PrintReady.formatTypeInfo }
                 | _ -> currParameter)
         { func with parameters = adjustedParameters } |> Array.singleton
     else
@@ -73,7 +73,7 @@ let autoGenerateAdditionalOverloadForType (func: PrintReadyTypedFunctionDeclarat
                         let _, newParameterType =
                             currParameter.typ.typ
                             |> transformPointerTy 0 RefPointer
-                        None, { currParameter with typ = newParameterType |> PrintReady.formatTypeInfo }
+                        None, { currParameter with typ = newParameterType |> FSharp.PrintReady.formatTypeInfo }
                     else
                         let (genericName, newParameterType) =
                             currParameter.typ.typ 
@@ -81,7 +81,7 @@ let autoGenerateAdditionalOverloadForType (func: PrintReadyTypedFunctionDeclarat
                         // Yes this is a bit evil, I'm sorry but this was easiest here.
                         // without hurting performance.
                         genericName |> Option.iter(fun _ -> i <- i + 1)
-                        genericName, { currParameter with typ = newParameterType |> PrintReady.formatTypeInfo })
+                        genericName, { currParameter with typ = newParameterType |> FSharp.PrintReady.formatTypeInfo })
             let genericTypes = adjustedParameters |> Array.choose fst
             let parameters = adjustedParameters |> Array.map snd
             { func with
@@ -94,7 +94,7 @@ let autoGenerateOverloadForType (func: PrintReadyTypedFunctionDeclaration) =
     let keep = func
 
     let injectTkType typ adjustedName expectedPointerTy =
-        let name = adjustedName |> formatNameRemovingPrefix
+        let name = adjustedName |> FSharp.formatNameRemovingPrefix
 
         let parameters =
             func.parameters
@@ -106,7 +106,7 @@ let autoGenerateOverloadForType (func: PrintReadyTypedFunctionDeclaration) =
                         |> OpenToolkit
                         |> RefPointer
                     | typ -> typ
-                { param with typ = typ |> PrintReady.formatTypeInfo })
+                { param with typ = typ |> FSharp.PrintReady.formatTypeInfo })
         // This is definitely no candidate for the pointers
         Some adjustedName,
         { func with
@@ -210,7 +210,7 @@ let main argv =
     let typecheckedFunctions =
         TypeMapping.looslyTypedFunctionsToTypedFunctions enumMap functions
         |> Array.Parallel.collect (fun func ->            
-            let func = Formatting.PrintReady.formatTypedFunctionDeclaration func
+            let func = Formatting.FSharp.PrintReady.formatTypedFunctionDeclaration func
             match functionOverloads |> Map.tryFind func.actualName with
             | Some overload ->
                 overload.overloads
@@ -223,10 +223,10 @@ let main argv =
                           parameters =
                               currOverload.parameters
                               |> Array.map
-                                  Formatting.PrintReady.formatTypeTypeParameterInfo
+                                  Formatting.FSharp.PrintReady.formatTypeTypeParameterInfo
                           retType =
                               currOverload.retType
-                              |> Formatting.PrintReady.formatTypeInfo })
+                              |> Formatting.FSharp.PrintReady.formatTypeInfo })
             | None ->
                 let newName, primaryOverload =
                     func
@@ -242,7 +242,7 @@ let main argv =
                 |> Array.distinct)
 
     let prettyEnumGroups =
-        enums |> Array.Parallel.map Formatting.PrintReady.formatEnumGroup
+        enums |> Array.Parallel.map Formatting.FSharp.PrintReady.formatEnumGroup
 
     let prettyEnumGroupMap =
         prettyEnumGroups
@@ -263,14 +263,14 @@ let main argv =
     basePath
     |> Directory.CreateDirectory
     |> ignore
-    Formatting.generateDummyTypes
+    Formatting.FSharp.generateDummyTypes
     |> fun content ->
-        File.WriteAllText(basePath </> dummyTypesFileName + ".cs", content)
+        File.WriteAllText(basePath </> dummyTypesFileName + ".fs", content)
     let inline writeToFile pathToFile topic content =
         pathToFile
         |> Directory.CreateDirectory
         |> ignore
-        let fileName = topic + ".cs"
+        let fileName = topic + ".fs"
         Directory.CreateDirectory pathToFile |> ignore
         File.WriteAllText(pathToFile </> fileName, content)
         pathToFile </> fileName
@@ -278,10 +278,6 @@ let main argv =
         let pathToFile = getPathForOpenGlVersion openGl
         writeToFile pathToFile topic content
 
-    let writeCsProjFile content =
-        let fileName = sprintf "OpenGL_Bindings.csproj"
-        let fullPathToFile = basePath </> fileName
-        File.WriteAllText(fullPathToFile, content)
     let typecheckedFunctionsExtensionsOnly =
         typecheckedFunctions
         |> Array.filter
@@ -314,17 +310,17 @@ let main argv =
     
 
     [|  let path = basePath </> "Extensions"
-        yield Formatting.generateEnums enumsWithExtensionsOnly (GenerateDetails.Extensions)
+        yield Formatting.FSharp.generateEnums enumsWithExtensionsOnly (GenerateDetails.Extensions)
             |> writeToFile path "EnumsExtensionsOnly"
 
-        yield Formatting.generateInterface typecheckedFunctionsExtensionsOnly (GenerateDetails.Extensions)
+        yield Formatting.FSharp.generateInterface typecheckedFunctionsExtensionsOnly (GenerateDetails.Extensions)
             |> writeToFile path "InterfaceExtensionsOnly"
 
-        yield Formatting.generateStaticClass typecheckedFunctionsExtensionsOnly
+        yield Formatting.FSharp.generateStaticClass typecheckedFunctionsExtensionsOnly
                     (GenerateDetails.Extensions)
                         |> writeToFile path "StaticClassExtensionsOnly"
 
-        yield Formatting.generateLibraryLoaderFor (GenerateDetails.Extensions)
+        yield Formatting.FSharp.generateLibraryLoaderFor (GenerateDetails.Extensions)
             |> writeToFile path "LibraryLoaderExtensionsOnly" |]
     |> ignore
     openGlVersions
@@ -368,17 +364,17 @@ let main argv =
                 
 
         let generatedFiles =
-            [| yield Formatting.generateEnums enumsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
+            [| yield Formatting.FSharp.generateEnums enumsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
                     |> writeToFile "EnumsWithoutExtensions"
 
-               yield Formatting.generateInterface typecheckedFunctionsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
+               yield Formatting.FSharp.generateInterface typecheckedFunctionsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
                     |> writeToFile "InterfaceWithoutExtensions"
 
-               yield Formatting.generateStaticClass typecheckedFunctionsWithoutExtensions
+               yield Formatting.FSharp.generateStaticClass typecheckedFunctionsWithoutExtensions
                          (GenerateDetails.OpenGlVersion glVersion)
                                 |> writeToFile "StaticClassWithoutExtensions"
 
-               yield Formatting.generateLibraryLoaderFor (GenerateDetails.OpenGlVersion glVersion)
+               yield Formatting.FSharp.generateLibraryLoaderFor (GenerateDetails.OpenGlVersion glVersion)
                     |> writeToFile "LibraryLoaderWithoutExtensions" |]
 
         printfn "Done writing OpenGL Version %s files." glVersion.version
