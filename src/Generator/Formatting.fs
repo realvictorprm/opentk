@@ -336,11 +336,15 @@ module FSharp =
                        [| let retTypeAsString = func.retType.prettyTypeName
 
                           let formattedParams =
-                              func.parameters
-                              |> Array.map
-                                  (fun p ->
-                                  p.typ.prettyTypeName)
-                              |> String.concat " * "
+                            match func.parameters with
+                            | [||] -> "unit"
+                            | [| param |] -> param.typ.prettyTypeName
+                            | parameters ->
+                                  parameters
+                                  |> Array.map
+                                      (fun p ->
+                                      p.typ.prettyTypeName)
+                                  |> String.concat " * "
                           yield documentationFor func.actualName |> writeLine
                           yield ("[<NativeSymbol(\"" + func.actualName + "\")>]")
                                 |> writeLine
@@ -375,7 +379,7 @@ module FSharp =
         seq {
             yield "namespace " + graphicsNamespace + "." + _namespace |> writeLine
             for using in usings -> sprintf "open %s" using |> writeLine
-            yield writeLine "module GL ="
+            yield writeLine "type GL ="
             yield indent
             yield """let instance = new NativeLibraryBuilder(ImplementationOptions.SuppressSecurity |
                                         ImplementationOptions.GenerateDisposalChecks |
@@ -403,7 +407,7 @@ module FSharp =
                         possiblePrefix + p.prettyName)
                     |> String.concat ", "
                 yield documentationFor func.actualName |> writeLine
-                yield sprintf "let %s %s : %s =" funcName formattedParams retTypeAsString |> write
+                yield sprintf "static member %s %s : %s =" funcName formattedParams retTypeAsString |> write
                 yield sprintf "instance.%s(%s)" funcName formattedParamNames |> writeLine
                 yield writeEmptyLine
             yield unindent
