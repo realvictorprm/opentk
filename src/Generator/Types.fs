@@ -17,9 +17,12 @@ let looseType typ group: GLLooseType =
     { typ = typ
       group = group }
 
+type LengthParamInfo =
+    | Single of dataParamName:string * lengthParamName:string
+
 type GLParameterInfo =
     { paramName: string
-      lengthParamName: string option
+      lengthParamName: LengthParamInfo option
       paramType: GLLooseType }
 
 let parameterInfo name typ =
@@ -114,7 +117,7 @@ type GLType =
 [<RequireQualifiedAccess>]
 type TypedParameterInfo =
     { name: string
-      lengthParamName: string option
+      lengthParamName: LengthParamInfo option
       typ: GLType }
 
 let typedParameterInfo name typ: TypedParameterInfo =
@@ -139,12 +142,31 @@ type PrintReadyTypeInfo =
     { prettyTypeName: string
       typ: GLType }
 
+type IPrintReadyTypedParameterInfo =
+    abstract actualName: string
+    abstract prettyName: string
+    abstract typ: PrintReadyTypeInfo
+    
+
 [<RequireQualifiedAccess>]
 type PrintReadyTypedParameterInfo =
     { actualName: string
       prettyName: string
-      lengthParamName: string option
+      lengthParamName: LengthParamInfo option
       typ: PrintReadyTypeInfo }
+
+      interface IPrintReadyTypedParameterInfo with
+          override self.actualName = self.actualName
+          override self.prettyName = self.prettyName
+          override self.typ = self.typ
+
+type IPrintReadyTypedFunctionDeclaration =
+    abstract actualName: string
+    abstract prettyName: string
+    abstract parameters: IPrintReadyTypedParameterInfo []
+    abstract genericTypes: string []
+    abstract retType: PrintReadyTypeInfo
+    
 
 [<RequireQualifiedAccess>]
 type PrintReadyTypedFunctionDeclaration =
@@ -153,6 +175,13 @@ type PrintReadyTypedFunctionDeclaration =
       parameters: PrintReadyTypedParameterInfo []
       genericTypes: string []
       retType: PrintReadyTypeInfo }
+    
+    interface IPrintReadyTypedFunctionDeclaration with
+        override self.actualName = self.actualName
+        override self.prettyName = self.prettyName
+        override self.parameters = self.parameters |> Array.map (fun e -> e :> _)
+        override self.genericTypes = self.genericTypes
+        override self.retType = self.retType
 
 [<RequireQualifiedAccess>]
 type PrintReadyEnum =
@@ -164,6 +193,34 @@ type PrintReadyEnum =
 type PrintReadyEnumGroup =
     { groupName: string
       enumCases: PrintReadyEnum [] }
+
+[<RequireQualifiedAccess>]
+type MarshalableTypedParameterInfo =
+    { actualName: string
+      prettyName: string
+      typ: PrintReadyTypeInfo }
+
+      interface IPrintReadyTypedParameterInfo with
+          override self.actualName = self.actualName
+          override self.prettyName = self.prettyName
+          override self.typ = self.typ
+
+[<RequireQualifiedAccess>]
+type MarshalableFunctionDeclaration =
+    { actualName: string
+      prettyName: string
+      instanceParameters: PrintReadyTypedParameterInfo []
+      functionParameters: MarshalableTypedParameterInfo []
+      lengthParamInfo: LengthParamInfo
+      genericTypes: string []
+      retType: PrintReadyTypeInfo }
+      
+      interface IPrintReadyTypedFunctionDeclaration with
+          override self.actualName = self.actualName
+          override self.prettyName = self.prettyName
+          override self.parameters = self.functionParameters |> Array.map (fun e -> e :> _)
+          override self.genericTypes = self.genericTypes
+          override self.retType = self.retType
 
 let typedFunctionDeclaration name parameters retType genericTypes : TypedFunctionDeclaration =
     { name = name

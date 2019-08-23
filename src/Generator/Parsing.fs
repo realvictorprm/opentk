@@ -162,11 +162,14 @@ let getFunctions (spec: OpenGL_Specification.Registry) =
             cmd.Params
             |> Array.Parallel.map (fun p ->
                 let lengthParamName, group, typ = extractTypeFromPtypeTag p
+                let lengthParamInfo =
+                    lengthParamName
+                    |> Option.map(fun name -> LengthParamInfo.Single(p.Name, name))
                 if String.IsNullOrWhiteSpace typ then
                     let str = p.XElement.ToString()
                     printfn "failed parsing %A, value: %s" (funcName) str
                 { paramName = p.Name
-                  lengthParamName = lengthParamName
+                  lengthParamName = lengthParamInfo
                   paramType = looseType typ group })
 
         let group, typ = extractTypeFromProto cmd.Proto

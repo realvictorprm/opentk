@@ -43,6 +43,7 @@ let parse (pathToSpec: string) =
 [<RequireQualifiedAccess>]
 type TypecheckAndFormatWithOverloadGenerationResult =
     { prettyFunctions: PrintReadyTypedFunctionDeclaration[]
+      marshalableFunctions: MarshalableFunctionDeclaration[]
       prettyEnumGroups: PrintReadyEnumGroup[]
       functionToExtensionMapper: Map<string, string[]>
       enumCaseToExtensionMapper: Map<string, string[]>
@@ -151,9 +152,11 @@ let ``typecheck, format and generate overloads`` (parseResult: ParseResult) =
             else None)
         |> Array.append requiredEnumsFromFunctions
         |> Array.distinctBy (fun e -> e.groupName)
+    let marshalableFunctions = Marshalling.getMarshableFunctions prettyFunctions
     {
         prettyEnumGroups = prettyEnumGroups
         prettyFunctions = prettyFunctions
+        marshalableFunctions = marshalableFunctions
         prettyEnumGroupMap = prettyEnumGroupMap
         functionToExtensionMapper = functionToExtensionMapper
         enumCaseToExtensionMapper = enumCaseToExtensionMapper
@@ -164,6 +167,7 @@ let ``typecheck, format and generate overloads`` (parseResult: ParseResult) =
 
 type TypecheckAndAggregateResults =
     { prettyFunctions: PrintReadyTypedFunctionDeclaration[]
+      marshalableFunctions: MarshalableFunctionDeclaration[]
       prettyEnumGroups: PrintReadyEnumGroup[]
       functionToExtensionMapper: Map<string, string[]>
       enumCaseToExtensionMapper: Map<string, string[]>
@@ -175,6 +179,7 @@ type TypecheckAndAggregateResults =
 let aggregateFunctionsAndEnums (typecheckResults: TypecheckAndFormatWithOverloadGenerationResult) =
     let openGlVersions = Aggregator.getEnumCasesAndCommandsPerVersion typecheckResults.data
     { prettyFunctions = typecheckResults.prettyFunctions
+      marshalableFunctions = typecheckResults.marshalableFunctions
       prettyEnumGroups = typecheckResults.prettyEnumGroups
       openGlVersions = openGlVersions
       prettyEnumGroupMap = typecheckResults.prettyEnumGroupMap
@@ -192,7 +197,7 @@ let generateCode basePath (typecheckAndAggregateResults: TypecheckAndAggregateRe
     let prettyEnumGroupMap = typecheckAndAggregateResults.prettyEnumGroupMap
     let functionToExtensionMapper = typecheckAndAggregateResults.functionToExtensionMapper
     let enumCaseToExtensionMapper = typecheckAndAggregateResults.enumCaseToExtensionMapper
-    
+    let marshalableFunctions = typecheckAndAggregateResults.marshalableFunctions
     
     let inline writeToFile pathToFile topic content =
         pathToFile
@@ -228,7 +233,9 @@ let generateCode basePath (typecheckAndAggregateResults: TypecheckAndAggregateRe
     Formatting.generateInterface typecheckedFunctionsExtensionsOnly (GenerateDetails.Extensions)
     |> writeToFile path "InterfaceExtensionsOnly"
 
-    Formatting.generateStaticClass typecheckedFunctionsExtensionsOnly
+    Formatting.generateStaticClass
+        typecheckedFunctionsExtensionsOnly 
+        (marshalableFunctions |> Array.filter(fun func -> functionToExtensionMapper|> Map.containsKey func.actualName))
         (GenerateDetails.Extensions)
     |> writeToFile path "StaticClassExtensionsOnly"
 
@@ -273,13 +280,22 @@ let generateCode basePath (typecheckAndAggregateResults: TypecheckAndAggregateRe
                 else None)
             |> Array.append requiredEnumsFromFunctions
             |> Array.distinctBy (fun e -> e.groupName)
+
+        let typecheckedFunctionsWithoutExtensionsMarshalled =
+            marshalableFunctions
+            |> Array.filter(fun func ->
+                glVersion.functions.Contains func.actualName
+                && (functionToExtensionMapper |> Map.containsKey func.actualName |> not))
         Formatting.generateEnums enumsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
         |> writeToFile "EnumsWithoutExtensions"
 
         Formatting.generateInterface typecheckedFunctionsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
         |> writeToFile "InterfaceWithoutExtensions"
 
-        Formatting.generateStaticClass typecheckedFunctionsWithoutExtensions (GenerateDetails.OpenGlVersion glVersion)
+        Formatting.generateStaticClass
+            typecheckedFunctionsWithoutExtensions
+            typecheckedFunctionsWithoutExtensionsMarshalled 
+            (GenerateDetails.OpenGlVersion glVersion)
         |> writeToFile "StaticClassWithoutExtensions"
 
         Formatting.generateLibraryLoaderFor (GenerateDetails.OpenGlVersion glVersion)

@@ -7,7 +7,7 @@ open Constants
 let autoGenerateAdditionalOverloadForType (func: PrintReadyTypedFunctionDeclaration) =
     let lengthParamsSet =
         func.parameters
-        |> Array.choose(fun p -> p.lengthParamName)
+        |> Array.choose(fun p -> p.lengthParamName |> Option.map(function Single(_, name) -> name))
         |> Set.ofArray
 
     let rec unwrapTyFromPointer typ =

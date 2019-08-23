@@ -403,7 +403,77 @@ let generateInterface (functions: PrintReadyTypedFunctionDeclaration [])
     }
     |> execute
 
+let formatStaticFunctionDeclaration documentationFor (func: #IPrintReadyTypedFunctionDeclaration) body =
+    seq {
+        let retTypeAsString = func.retType.prettyTypeName
+
+        let formattedParams =
+            func.parameters
+            |> Array.Parallel.map
+                (fun p -> p.typ.prettyTypeName + " " + p.prettyName)
+            |> String.concat ", "
+
+        let funcName = func.prettyName
+
+        // Parameters are so less that running in parallel hurts rather then helps.
+        let additional =
+            if func.genericTypes.Length > 0 then
+                let inner =
+                    func.genericTypes
+                    |> String.concat ", "
+                "<" + inner + ">"
+            else ""
+        yield documentationFor func.actualName |> writeLine
+        let prefix =
+            if func.parameters |> Array.exists (fun p -> isPointerType p.typ.typ)
+               || isPointerType func.retType.typ then " unsafe"
+            else ""
+        if func.genericTypes.Length > 0 then
+            yield sprintf "public static%s %s %s%s(%s)"
+                      prefix retTypeAsString funcName additional formattedParams |> writeLine
+            yield indent
+            yield writeLine ""
+            for typ in func.genericTypes |> Seq.take (max 0 (func.genericTypes.Length - 2)) do
+                yield "where " + typ + " : struct" |> writeLine
+            let last = func.genericTypes |> Seq.last
+            yield "where " + last + " : struct" |> write
+            yield! body
+
+            yield unindent
+        else
+            yield sprintf "public static%s %s %s%s(%s) "
+                      prefix retTypeAsString funcName additional formattedParams |> write
+            yield! body
+    }
+
+let generateMarshalableFunctions (functions: MarshalableFunctionDeclaration[]) documentationFor =
+    seq {
+        for func in functions do
+            let body =
+                let formattedParamNames =
+                    func.instanceParameters
+                    |> Array.Parallel.map (fun p ->
+                        let possiblePrefix =
+                            match p.typ.typ with
+                            | RefPointer _ -> "ref "
+                            | _ -> ""
+                        possiblePrefix + p.prettyName)
+                    |> String.concat ", "
+                let funcName = func.prettyName
+                let (LengthParamInfo.Single(dataParamName, lengthParamName)) = func.lengthParamInfo
+                seq {
+                    yield writeLeftBracket
+                    yield indent
+                    yield sprintf "var %s = %s.Length;" lengthParamName dataParamName |> writeLine
+                    yield sprintf "instance.%s(%s);" funcName formattedParamNames |> writeLine
+                    yield unindent
+                    yield writeRightBracket
+                }
+            yield! formatStaticFunctionDeclaration documentationFor func body
+    }
+
 let generateStaticClass (functions: PrintReadyTypedFunctionDeclaration [])
+    (marshalableFunctions: MarshalableFunctionDeclaration[])
     (details: GenerateDetails) =
     let _namespace, documentationFor = namespaceAndDocumentationFor details
     let usings =
@@ -417,17 +487,7 @@ let generateStaticClass (functions: PrintReadyTypedFunctionDeclaration [])
         yield writeLeftBracket
         yield indent
         for func in functions do
-            let retTypeAsString = func.retType.prettyTypeName
-
-            let formattedParams =
-                func.parameters
-                |> Array.Parallel.map
-                    (fun p -> p.typ.prettyTypeName + " " + p.prettyName)
-                |> String.concat ", "
-
             let funcName = func.prettyName
-
-            // Parameters are so less that running in parallel hurts rather then helps.
             let formattedParamNames =
                 func.parameters
                 |> Array.Parallel.map (fun p ->
@@ -437,35 +497,13 @@ let generateStaticClass (functions: PrintReadyTypedFunctionDeclaration [])
                         | _ -> ""
                     possiblePrefix + p.prettyName)
                 |> String.concat ", "
-            let additional =
-                if func.genericTypes.Length > 0 then
-                    let inner =
-                        func.genericTypes
-                        |> String.concat ", "
-                    "<" + inner + ">"
-                else ""
-            yield documentationFor func.actualName |> writeLine
-            let prefix =
-                if func.parameters |> Array.exists (fun p -> isPointerType p.typ.typ)
-                   || isPointerType func.retType.typ then " unsafe"
-                else ""
-            if func.genericTypes.Length > 0 then
-                yield sprintf "public static%s %s %s%s(%s)"
-                          prefix retTypeAsString funcName additional formattedParams |> writeLine
-                yield indent
-                yield writeLine ""
-                for typ in func.genericTypes |> Seq.take (max 0 (func.genericTypes.Length - 2)) do
-                    yield "where " + typ + " : struct" |> writeLine
-                let last = func.genericTypes |> Seq.last
-                yield "where " + last + " : struct" |> write
-                yield sprintf " => instance.%s(%s);" funcName formattedParamNames |> writeLine
-
-                yield unindent
-            else
-                yield sprintf "public static%s %s %s%s(%s) => instance.%s(%s);"
-                          prefix retTypeAsString funcName additional formattedParams
-                          funcName formattedParamNames |> writeLine
+            yield!
+                sprintf "=> instance.%s(%s);" funcName formattedParamNames
+                |> writeLine
+                |> Seq.singleton
+                |> formatStaticFunctionDeclaration documentationFor func
             yield writeEmptyLine
+        yield! generateMarshalableFunctions marshalableFunctions documentationFor
         yield unindent
         yield writeRightBracket
         yield unindent
